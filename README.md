@@ -21,7 +21,6 @@ motor.reset()
 # also define the ALLCALL device to control all the motor controllers on the bus
 ALLCALL = Zio4DCMotor(i2c=i2c, addr=112)
 
-
 # wrap main loop in try/except so we always disable all motors when the code exits
 try:
     # the main loop

@@ -23,7 +23,7 @@ TB6612FNG datasheet: https://www.smart-prototyping.com/image/data/NOA-RnD/101897
 ---------------------------------------------------
 """
 
-import struct as ustruct
+import struct
 import time
 
 from adafruit_bus_device.i2c_device import I2CDevice
@@ -98,8 +98,8 @@ class Zio4DCMotor:
         """Calculate register and write a two-byte buffer to set PWM for the two pins for motor num."""
         # PCA9685_LED0_ON_L is the first/lowest register, we calculate from there
         reg = PCA9685_LED0_ON_L + 4 * num
-        self.buf4[0:2] = ustruct.pack("<H", on)
-        self.buf4[2:4] = ustruct.pack("<H", off)
+        self.buf4[0:2] = struct.pack("<H", on)
+        self.buf4[2:4] = struct.pack("<H", off)
         self.write(reg=reg, buf=self.buf4)
 
     def restart(self):
