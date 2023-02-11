@@ -15,15 +15,11 @@ i2c.unlock()
 # initialise and reset Zio 4DC motor controllers
 motor = Zio4DCMotor(i2c=i2c, addr=0x40)
 
-# turn off all motors
-motor.reset()
-
 # also define the ALLCALL device to control all the motor controllers on the bus
 ALLCALL = Zio4DCMotor(i2c=i2c, addr=112)
 
-# wrap main loop in try/except so we always disable all motors when the code exits
+# wrap main loop in try/finally (so we always disable all motors when the code exits)
 try:
-    # the main loop
     while True:
         for mid in [0,1,2,3]:
             motor.go_forward(mid)
@@ -34,7 +30,7 @@ try:
             motor.go_backward(mid)
             motor.speed(mid, 50)
         time.sleep(5)
-        ALLCALL.stop()
+        ALLCALL.reset()
         time.sleep(5)
 finally:
     logger.warning("Code stopped, resetting (setting speed of all motors to 0 and disabling both drivers on all motor controllers)...")

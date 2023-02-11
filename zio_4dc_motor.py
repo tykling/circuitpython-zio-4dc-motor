@@ -21,6 +21,26 @@ TB6612FNG datasheet: https://www.smart-prototyping.com/image/data/NOA-RnD/101897
 |  6        --  PWMB1         14      --   IO14   |
 |  7        --  PWMA2         15      --   IO15   |
 ---------------------------------------------------
+
+The motor terminals are labelled with:
+- A101/A102 for motor 0 (driven by TB6612 #1)
+- B101/B102 for motor 1 (driven by TB6612 #1)
+- A201/A202 for motor 2 (driven by TB6612 #2)
+- B201/B202 for motor 3 (driven by TB6612 #2)
+
+Example: Run motor 0 clockwise at 50% speed for 5s:
+
+    import board
+    import time
+    from zio_4dc_motor import Zio4DCMotor
+    i2c = board.STEMMA_I2C() # or whatever i2c you use
+    controller = Zio4DCMotor(i2c=i2c, addr=0x40) # address may vary
+    controller.go_forward(0) # set direction
+    controller.speed(0, 50) # set speed 50% for motor 0
+    time.sleep(5)
+    # use controller.stop() to stop all motors at once
+    controller.speed(0, 0) # set speed to 0 for motor 0
+
 """
 
 import struct
@@ -46,14 +66,17 @@ class Zio4DCMotor:
         self.buf1 = bytearray(1)
         self.buf4 = bytearray(4)
         self.addr = addr
-        self.device = I2CDevice(i2c, addr, probe=False)
-        # A101: motor 0, tb6612 #1
-        # B101: motor 1, tb6612 #1
-        # A201: motor 2, tb6612 #2
-        # B201: motor 3, tb6612 #2
-        # (speed pin, clockwise pin, counterclockwise pin, tb6612)
+
+        # initialise I2CDevice object
+        self.device = I2CDevice(i2c, addr)
+
+        # a tuple of tuples of: (speed pin, clockwise pin, counterclockwise pin, tb6612)
         self.dc_motor = ((0, 1, 2, 1), (6, 4, 5, 1), (7, 8, 9, 2), (13, 11, 12, 2))
+
+        # the pins used to turn each BB6612 driver on/off
         self.tb6612pins = {1: 3, 2: 10}
+
+        # set the frequency
         self.set_freq(freq)
 
         # do we want to restart or reset?
@@ -67,7 +90,7 @@ class Zio4DCMotor:
             self.enable_tb6612(1)
             self.enable_tb6612(2)
 
-    def read(self, reg: int, bufsize=1):
+    def read(self, reg: int, bufsize: int = 1):
         """Read bufsize bytes from the device, starting at register reg. Retry until it works."""
         buf = bytearray(bufsize)
         while True:
@@ -94,7 +117,7 @@ class Zio4DCMotor:
                         f"Got an exception while writing to i2c register {reg}: {E} .... retrying!"
                     )
 
-    def set_pwm(self, num, on, off):
+    def set_pwm(self, num: int, on: int, off: int):
         """Calculate register and write a two-byte buffer to set PWM for the two pins for motor num."""
         # PCA9685_LED0_ON_L is the first/lowest register, we calculate from there
         reg = PCA9685_LED0_ON_L + 4 * num
@@ -112,7 +135,7 @@ class Zio4DCMotor:
         self.buf1[0] = cmd
         self.write(reg=reg, buf=self.buf1)
 
-    def set_freq(self, freq):
+    def set_freq(self, freq: int):
         """Set the pwm frequency."""
         # calculate prescale from freq
         prescale = int(25000000.0 / 4096.0 / freq + 0.5)
@@ -131,7 +154,7 @@ class Zio4DCMotor:
             reg=PCA9685_MODE1, cmd=old_mode | 0xA1
         )  # Same mode 1 but with autoincrement on
 
-    def set_pin(self, num, val, invert=False):
+    def set_pin(self, num: int, val: int, invert=False):
         """Set PWM value for pins. These are 12 bit registers so the max value is 4095."""
         val = min(val, 4095)
         if invert:
@@ -149,33 +172,38 @@ class Zio4DCMotor:
             else:
                 self.set_pwm(num, 0, val)
 
-    def enable_tb6612(self, driver=1):
+    def enable_tb6612(self, driver: int = 1):
         """Enable a TB6612 by setting pin 3 or 10 high."""
         self.set_pin(num=self.tb6612pins[driver], val=0, invert=True)
 
-    def disable_tb6612(self, driver=1):
+    def disable_tb6612(self, driver: int = 1):
         """Disable a TB6612 by setting pin 3 or 10 low."""
         self.set_pin(num=self.tb6612pins[driver], val=0, invert=False)
 
-    def reset(self):
-        """Stop both tb6612 drivers and set all motor speeds to 0."""
+    def stop(self):
+        """Set all motor speeds to 0."""
         # fastest way to stop all motors is to write logic 1 to bit 4 of register 0xFD
         self.send_command8(reg=0xFD, cmd=0b00010000)
+
+    def reset(self):
+        """Stop both tb6612 drivers and set all motor speeds to 0."""
+        # stop all motors
+        self.stop()
         # also disable both drivers
         self.disable_tb6612(1)
         self.disable_tb6612(2)
 
-    def go_forward(self, motor):
+    def go_forward(self, motor: int):
         """Start the motor in a clockwise direction."""
         self.set_pin(self.dc_motor[motor][1], 0, True)
         self.set_pin(self.dc_motor[motor][2], 4095, True)
 
-    def go_backward(self, motor):
+    def go_backward(self, motor: int):
         """Start the motor in a counter-clockwise direction."""
         self.set_pin(self.dc_motor[motor][1], 4095, True)
         self.set_pin(self.dc_motor[motor][2], 0, True)
 
-    def speed(self, motor, speed):
+    def speed(self, motor: int, speed: int):
         """Set the speed of the motor from 0% to 100%."""
         if speed > 100:
             speed = 100
